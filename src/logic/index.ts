@@ -91,29 +91,38 @@ export const createEmptyBoard = (): readonly ITile[] => {
       realContent: 'sea' as tile_type,
       revealedContent: null,
       isAttacked: false,
-    }))
+    })),
   );
 };
 
 const isValidPlacement = (
   board: readonly ITile[],
   index1: number,
-  index2: number
+  index2: number,
 ): boolean => {
+  const tile1 = board[index1];
+  const tile2 = board[index2];
+
   return (
     index1 >= 0 &&
     index1 < BOARD_SIZE &&
     index2 >= 0 &&
     index2 < BOARD_SIZE &&
-    board[index1].realContent === 'sea' &&
-    board[index2].realContent === 'sea'
+    tile1 !== undefined &&
+    tile2 !== undefined &&
+    tile1.realContent === 'sea' &&
+    tile2.realContent === 'sea'
   );
 };
 
 export const placeShipsRandomly = (
   initialBoard: readonly ITile[],
-  totalShipsCount: number = TOTAL_SHIPS_COUNT
-): { board: readonly ITile[]; ships: readonly IShip[]; remainingTargets: number } => {
+  totalShipsCount: number = TOTAL_SHIPS_COUNT,
+): {
+  board: readonly ITile[];
+  ships: readonly IShip[];
+  remainingTargets: number;
+} => {
   let currentBoard = [...initialBoard.map((tile) => ({ ...tile }))];
   const createdShips: IShip[] = [];
   let totalTargets = 0;
@@ -121,16 +130,24 @@ export const placeShipsRandomly = (
   for (let i = 0; i < totalShipsCount; i++) {
     const size = Math.random() < 0.5 ? 1 : 2;
     const isVertical = Math.random() < 0.5;
-    const orientation: orientation_type = isVertical ? 'vertical' : 'horizontal';
+    const orientation: orientation_type = isVertical
+      ? 'vertical'
+      : 'horizontal';
     let placed = false;
 
     while (!placed) {
       const index = Math.floor(Math.random() * BOARD_SIZE);
       const shipIcon: tile_type = size === 1 ? 'single_ship' : 'double_ship';
+      const currentTile = currentBoard[index];
+
+      if (!currentTile) continue;
 
       if (size === 1) {
-        if (currentBoard[index].realContent === 'sea') {
-          currentBoard[index] = { ...currentBoard[index], realContent: shipIcon };
+        if (currentTile.realContent === 'sea') {
+          currentBoard[index] = {
+            ...currentTile,
+            realContent: shipIcon,
+          };
           createdShips.push({
             id: `ship-${i + 1}`,
             size: 1,
@@ -147,9 +164,20 @@ export const placeShipsRandomly = (
               ? index + GRID_DIMENSION
               : index - GRID_DIMENSION;
 
-          if (isValidPlacement(currentBoard, index, neighborIndex)) {
-            currentBoard[index] = { ...currentBoard[index], realContent: shipIcon };
-            currentBoard[neighborIndex] = { ...currentBoard[neighborIndex], realContent: shipIcon };
+          const neighborTile = currentBoard[neighborIndex];
+
+          if (
+            neighborTile &&
+            isValidPlacement(currentBoard, index, neighborIndex)
+          ) {
+            currentBoard[index] = {
+              ...currentTile,
+              realContent: shipIcon,
+            };
+            currentBoard[neighborIndex] = {
+              ...neighborTile,
+              realContent: shipIcon,
+            };
             createdShips.push({
               id: `ship-${i + 1}`,
               size: 2,
@@ -162,14 +190,24 @@ export const placeShipsRandomly = (
         } else {
           const row = Math.floor(index / GRID_DIMENSION);
           const col = index % GRID_DIMENSION;
-          const neighborIndex = col + 1 < GRID_DIMENSION ? index + 1 : index - 1;
+          const neighborIndex =
+            col + 1 < GRID_DIMENSION ? index + 1 : index - 1;
+
+          const neighborTile = currentBoard[neighborIndex];
 
           if (
+            neighborTile &&
             Math.floor(neighborIndex / GRID_DIMENSION) === row &&
             isValidPlacement(currentBoard, index, neighborIndex)
           ) {
-            currentBoard[index] = { ...currentBoard[index], realContent: shipIcon };
-            currentBoard[neighborIndex] = { ...currentBoard[neighborIndex], realContent: shipIcon };
+            currentBoard[index] = {
+              ...currentTile,
+              realContent: shipIcon,
+            };
+            currentBoard[neighborIndex] = {
+              ...neighborTile,
+              realContent: shipIcon,
+            };
             createdShips.push({
               id: `ship-${i + 1}`,
               size: 2,
@@ -222,7 +260,10 @@ export const initGameState = (playerName: string = 'Navy'): IGameState => {
 // Core Game Logic & Actions (Pure / Immutable)
 // ==========================================
 
-export const processShot = (currentState: IGameState, targetIndex: number): IGameState => {
+export const processShot = (
+  currentState: IGameState,
+  targetIndex: number,
+): IGameState => {
   if (currentState.status !== 'playing') {
     return currentState;
   }
@@ -232,6 +273,10 @@ export const processShot = (currentState: IGameState, targetIndex: number): IGam
   }
 
   const targetTile = currentState.board[targetIndex];
+
+  if (!targetTile) {
+    return currentState;
+  }
 
   if (targetTile.isAttacked) {
     return Object.freeze({
@@ -245,7 +290,10 @@ export const processShot = (currentState: IGameState, targetIndex: number): IGam
     return {
       ...tile,
       isAttacked: true,
-      revealedContent: tile.realContent === 'sea' ? ('shot_missed' as tile_type) : tile.realContent,
+      revealedContent:
+        tile.realContent === 'sea'
+          ? ('shot_missed' as tile_type)
+          : tile.realContent,
     };
   });
 
@@ -258,9 +306,12 @@ export const processShot = (currentState: IGameState, targetIndex: number): IGam
 
     const newHits = currentState.stats.hits + 1;
     const newConsecutiveHits = currentState.stats.consecutiveHits + 1;
-    const isConsecutiveReward = newConsecutiveHits > 0 && newConsecutiveHits % 3 === 0;
+    const isConsecutiveReward =
+      newConsecutiveHits > 0 && newConsecutiveHits % 3 === 0;
 
-    const newShips = isConsecutiveReward ? currentState.stats.ships + 1 : currentState.stats.ships;
+    const newShips = isConsecutiveReward
+      ? currentState.stats.ships + 1
+      : currentState.stats.ships;
     const newAmmo = currentState.stats.ammo + ammoBonus;
     const newRemainingTargets = currentState.remainingTargets - 1;
 
