@@ -292,3 +292,144 @@ export const processShot = (
     if (idx !== targetIndex) return tile;
     return {
       ...tile,
+      isAttacked: true,
+      revealedContent:
+        tile.realContent === 'sea'
+          ? ('shot_missed' as tile_type)
+          : tile.realContent,
+    };
+  });
+
+  const hitSuccess = targetTile.realContent !== 'sea';
+
+  if (hitSuccess) {
+    const isSingle = targetTile.realContent === 'single_ship';
+    const scoreAdd = isSingle ? 50 : 100;
+    const ammoBonus = isSingle ? 0 : 1;
+
+    const newHits = currentState.stats.hits + 1;
+    const newConsecutiveHits = currentState.stats.consecutiveHits + 1;
+    const isConsecutiveReward =
+      newConsecutiveHits > 0 && newConsecutiveHits % 3 === 0;
+
+    const newShips = isConsecutiveReward
+      ? currentState.stats.ships + 1
+      : currentState.stats.ships;
+    const newAmmo = currentState.stats.ammo + ammoBonus;
+    const newRemainingTargets = currentState.remainingTargets - 1;
+
+    const updatedStats: IGameStats = Object.freeze({
+      ...currentState.stats,
+      score: currentState.stats.score + scoreAdd,
+      hits: newHits,
+      consecutiveHits: newConsecutiveHits,
+      ships: newShips,
+      ammo: newAmmo,
+    });
+
+    const isWon = newRemainingTargets <= 0;
+
+    return Object.freeze({
+      ...currentState,
+      board: Object.freeze(newBoard),
+      stats: updatedStats,
+      remainingTargets: newRemainingTargets,
+      status: isWon ? 'won' : 'playing',
+      lastActionResult: isWon
+        ? 'Threat eliminated. You won!'
+        : `Hit enemy ship! +${scoreAdd} pts.${isConsecutiveReward ? ' 3 Consecutive hits! Reward: +1 Ship!' : ''}`,
+    });
+  } else {
+    let newAmmo = currentState.stats.ammo - 1;
+    let newShips = currentState.stats.ships;
+    let actionMessage = 'You missed the shot!';
+
+    if (newAmmo <= 0) {
+      newShips -= 1;
+      newAmmo = AMMO_PER_SHIP_RESET;
+      actionMessage = 'You ran out of ammo and lost a ship!';
+    }
+
+    const updatedStats: IGameStats = Object.freeze({
+      ...currentState.stats,
+      consecutiveHits: 0,
+      ammo: newAmmo,
+      ships: newShips,
+    });
+
+    const isLost = newShips <= 0;
+
+    return Object.freeze({
+      ...currentState,
+      board: Object.freeze(newBoard),
+      stats: updatedStats,
+      status: isLost ? 'lost' : 'playing',
+      lastActionResult: isLost
+        ? 'Mission failed... You lost all your ships. The enemy has invaded!'
+        : actionMessage,
+    });
+  }
+};
+
+// ==========================================
+// Reactive State & Component Methods
+// ==========================================
+
+const gameState = ref<IGameState>(initGameState('Navy'));
+
+const handleTileClick = (index: number): void => {
+  if (gameState.value.status === 'playing') {
+    gameState.value = processShot(gameState.value, index);
+  }
+};
+
+const handleRestart = (): void => {
+  gameState.value = initGameState(gameState.value.stats.playerName);
+};
+
+const getTileContent = (tile?: ITile): string => {
+  if (!tile || !tile.isAttacked) return '';
+  switch (tile.revealedContent) {
+    case 'single_ship':
+      return ICON_SINGLE_SHIP;
+    case 'double_ship':
+      return ICON_DOUBLE_SHIP;
+    case 'shot_missed':
+      return ICON_SHOT_MISSED;
+    default:
+      return ICON_SEA;
+  }
+};
+
+const getTileClass = (tile?: ITile): string => {
+  if (!tile || !tile.isAttacked) return 'game-board__cell--unattacked';
+  if (tile.revealedContent === 'sea' || tile.revealedContent === 'shot_missed') {
+    return 'game-board__cell--missed';
+  }
+  return 'game-board__cell--hit';
+};
+</script>
+
+<template>
+  <div class="game-container">
+    <header class="game-header">
+      <h1 class="game-header__title">BATTLESHIP RADAR</h1>
+      <p class="game-header__subtitle">Commander: {{ gameState.stats.playerName }}</p>
+    </header>
+
+    <!-- Stats Panel -->
+    <section class="game-stats">
+      <div class="game-stats__card">
+        <span class="game-stats__label">SCORE</span>
+        <span class="game-stats__value">{{ gameState.stats.score }}</span>
+      </div>
+      <div class="game-stats__card">
+        <span class="game-stats__label">SHIPS</span>
+        <span class="game-stats__value">{{ gameState.stats.ships }}</span>
+      </div>
+      <div class="game-stats__card">
+        <span class="game-stats__label">AMMO</span>
+        <span class="game-stats__value">{{ gameState.stats.ammo }}</span>
+      </div>
+      <div class="game-stats__card">
+        <span class="game-stats__label">
